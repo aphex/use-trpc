@@ -1,0 +1,38 @@
+{
+  "name": "use-trpc",
+  "version": "1.0.0-beta.0",
+  "description": "",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "require": "./dist/index.cjs",
+      "import": "./dist/index.mjs",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "unbuild",
+    "test": "vitest run"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "vue-demi": "^0.13.11"
+  },
+  "peerDependencies": {
+    "@trpc/client": "^10.0.0-proxy-beta",
+    "@trpc/server": "^10.0.0-proxy-beta",
+    "vue": "^3.0.0-0 || ^2.6.0"
+  },
+  "devDependencies": {
+    "@trpc/client": "^10.0.0-proxy-beta",
+    "@trpc/server": "^10.0.0-proxy-beta",
+    "happy-dom": "^6.0.4",
+    "unbuild": "^0.8.11",
+    "vitest": "^0.23.4",
+    "zod": "^3.19.1"
+  }
+}
