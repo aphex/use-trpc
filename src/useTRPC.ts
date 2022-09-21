@@ -37,6 +37,7 @@ type SubscriptionOptions<T, E> = {
   onError?: (data: E) => void
   initialData?: T
   immediate?: boolean
+  resubscribeOnReconnect?: boolean
 }
 
 type ProcedureArgs<T> = T | (() => T | Promise<T>)
@@ -68,6 +69,7 @@ export const useTRPC = <Router extends AnyRouter>(options: UseTRPCOptions<Router
   // we provide a ref that can be used to indicate if the websocket is connected
   const isWebsocketConnected =
     !options.wsUrl && externalIsWebsocketConnected ? computed(() => externalIsWebsocketConnected.value) : ref(false)
+  const connected = readonly(isWebsocketConnected)
 
   const wsLinkConfig = options.wsUrl
     ? wsLink({
@@ -289,6 +291,7 @@ export const useTRPC = <Router extends AnyRouter>(options: UseTRPCOptions<Router
    * @param params.onError callback function that will be called if an error occurs
    * @param params.initialData initial data to use for the reactive data property
    * @param params.immediate immediately subscribe to this topic (default true)
+   * @param params.resubscribeOnReconnect automatically resubscribe to the topic on socket reconnect
    * @returns
    */
   const useSubscription = <
@@ -300,7 +303,7 @@ export const useTRPC = <Router extends AnyRouter>(options: UseTRPCOptions<Router
     T extends [any, any] = O extends Observable<infer O, infer E> ? [O, E] : [never, never]
   >(
     topic: P,
-    { onData, onError, initialData, immediate }: SubscriptionOptions<T[0], T[1]> = {}
+    { onData, onError, initialData, immediate, resubscribeOnReconnect }: SubscriptionOptions<T[0], T[1]> = {}
   ) => {
     // Lets default to immediately subscribing to the topic
     if (immediate === undefined) immediate = true
@@ -355,9 +358,10 @@ export const useTRPC = <Router extends AnyRouter>(options: UseTRPCOptions<Router
     watch(isWebsocketConnected, (connected, oldConnected) => {
       if (oldConnected && !connected) {
         hasDisconnected = true
-        unsubscribe()
+        _subscribed.value = false
+        if (resubscribeOnReconnect) unsubscribe()
       } else if (hasDisconnected && !oldConnected && connected) {
-        subscribe()
+        if (resubscribeOnReconnect) subscribe()
         hasDisconnected = false
       }
     })
@@ -376,6 +380,7 @@ export const useTRPC = <Router extends AnyRouter>(options: UseTRPCOptions<Router
     client,
     isExecuting,
     executions,
+    connected,
     useQuery,
     useMutation,
     useSubscription,

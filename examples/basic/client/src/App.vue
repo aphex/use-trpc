@@ -10,7 +10,7 @@
   // as our demo is all on local host we need to force a delay to see the loading indicator
   import { refThrottled } from '@vueuse/core'
 
-  const { useQuery, useSubscription, isExecuting, executions } = useTRPC<Router>({
+  const { useQuery, useSubscription, isExecuting, executions, connected } = useTRPC<Router>({
     url: `/trpc`, // note the vite.config.ts proxy helping us with cors issues here
     wsUrl: `ws://localhost:8080/`,
   })
@@ -24,7 +24,7 @@
     subscribe,
     unsubscribe,
     subscribed,
-  } = useSubscription('uptime', { initialData: { start: 0, uptime: 0 } })
+  } = useSubscription('uptime', { initialData: { start: 0, uptime: 0 }, resubscribeOnReconnect: false })
 
   const id = ref(0)
   const { data } = useQuery('getUser', reactive({ id }), { msg: 'Loading User', immediate: true })
@@ -38,7 +38,11 @@
   </transition>
 
   <div class="row">
-    <div class="subscribed-indicator" :class="{ subscribed }"></div>
+    <p>Socket Status</p>
+    <div class="indicator" :class="{ active: connected }"></div>
+  </div>
+  <div class="row">
+    <div class="indicator" :class="{ active: subscribed }"></div>
     <p>{{ userCountData?.uptime }}seconds</p>
   </div>
 
@@ -72,13 +76,13 @@
     gap: 0.25rem;
   }
 
-  .subscribed-indicator {
+  .indicator {
     width: 0.25rem;
     height: 0.25rem;
     border-radius: 50%;
     background-color: red;
   }
-  .subscribed-indicator.subscribed {
+  .indicator.active {
     background-color: green;
   }
 

@@ -37,11 +37,13 @@ const router = t.router({
       email: chance.email(),
     })),
   uptime: t.procedure.subscription(() => {
+    console.log('uptime subscription hit')
     return observable<{ start: number; uptime: number }>((emit) => {
       const interval = setInterval(() => {
         const now = performance.now()
         const uptime = now - start
         emit.next({ start, uptime })
+        console.log('uptime emitting')
       }, 1000)
 
       return () => clearInterval(interval)
