@@ -7,7 +7,7 @@ export type inferProcedureNames<
   R extends AnyRouter,
   T extends ProcedureType,
   P extends R['_def']['procedures'] = R['_def']['procedures'],
-  K extends keyof P = keyof P,
+  K extends keyof P = keyof P
 > = K extends string
   ? P[K] extends AnyProcedure
     ? P[K]['_type'] extends T
@@ -20,7 +20,7 @@ export type inferProcedureNames<
 
 export type inferProcedureValues<
   T extends AnyRouter,
-  P extends inferProcedureNames<T, ProcedureType>,
+  P extends inferProcedureNames<T, ProcedureType>
 > = P extends `${infer K}.${infer Rest}`
   ? K extends keyof T
     ? T[K] extends AnyRouter

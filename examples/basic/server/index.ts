@@ -1,8 +1,12 @@
 import type { inferAsyncReturnType } from '@trpc/server'
 import { initTRPC } from '@trpc/server'
 import { createHTTPServer } from '@trpc/server/adapters/standalone'
-import { z } from 'zod'
+import { applyWSSHandler } from '@trpc/server/adapters/ws'
+import { observable } from '@trpc/server/observable'
 import Chance from 'chance'
+import ws from 'ws'
+import { z } from 'zod'
+import { performance } from 'perf_hooks'
 
 const chance = new Chance()
 
@@ -12,6 +16,8 @@ const createContext = () => ({})
 type Context = inferAsyncReturnType<typeof createContext>
 
 const t = initTRPC.context<Context>().create()
+const start = performance.now()
+
 const router = t.router({
   getUser: t.procedure
     .input(
@@ -30,14 +36,28 @@ const router = t.router({
       phone: chance.phone(),
       email: chance.email(),
     })),
+  uptime: t.procedure.subscription(() => {
+    return observable<{ start: number; uptime: number }>((emit) => {
+      const interval = setInterval(() => {
+        const now = performance.now()
+        const uptime = now - start
+        emit.next({ start, uptime })
+      }, 1000)
+
+      return () => clearInterval(interval)
+    })
+  }),
 })
 
 export type Router = typeof router
 
-const { listen } = createHTTPServer({
+const { server, listen } = createHTTPServer({
   router,
   createContext,
 })
+
+const wss = new ws.Server({ server })
+applyWSSHandler<Router>({ wss, router, createContext })
 
 console.log(`🚀 tRPC listening on port ${PORT}`)
 listen(PORT)
