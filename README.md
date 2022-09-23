@@ -1,6 +1,6 @@
 <div align="center">
   <h2 align="center">use-tRPC</h1>
-  <p>Vue composable library for tRPC v10</p>
+  <p>Vue composable utility for tRPC v10</p>
 </div>
 
 <div align="center">
@@ -11,13 +11,14 @@
 <hr>
 
 # 👀 Features
-- 🎻 Composable access to tRPC client, Queries, Mutations, and Subscriptions
-- 🗒️ Reactive Execution list for loading indicators
-- 🔃 Automatic tracking of reactive header and procedure arguments
-- 📦 Reactive data for each procedure 
-- 🔌 Automatic re-subscription on socket reconnect
-- ☯️ Built with [vue-demi](https://github.com/vueuse/vue-demi) to support Vue 2 and Vue 3
-- ⌨️ Built with [TypeScript](https://www.typescriptlang.org/) providing TypeSafe options
+- 🎻 Composable access to tRPC client, Queries, Mutations, and Subscriptions.
+- ✔️ Configurable reactivity per query, mutation and subscription.
+- 🗒️ Reactive Execution list for loading indicators.
+- 🔃 Built-in tracking of reactive headers, procedure arguments and subscription arguments.
+- 🔥 Automatic re-fetch and re-subscribe.
+- 📦 Reactive data procedures and subscriptions.
+- ☯️ Built with [vue-demi](https://github.com/vueuse/vue-demi) to support Vue 2 and Vue 3.
+- ⌨️ Built with [TypeScript](https://www.typescriptlang.org/) providing TypeSafe options.
 
 # 📦 Install
 
@@ -108,12 +109,24 @@ npm i vue @trpc/client@next @trpc/server@next
     wsUrl: import.meta.env.VITE_tRPC_WSURL,
   })
 ```
+## Enable the default tRPC Logger
+```ts
+  const { useQuery, useSubscription, isExecuting, executions } = useTRPC<Router>({
+    url: import.meta.env.VITE_tRPC_URL,
+    wsUrl: import.meta.env.VITE_tRPC_WSURL,
+    // this can also be LoggerLinkOptions top configure a logger manually
+    logger: true
+  })
+```
 
 ## Full Query/Mutation Config
 ```ts
   const { data, execute, executing, immediatePromise, pause, paused, unpause } = useQuery(
-    'getUser', 
-    reactive({ id }), 
+    // path to the procedure
+    'getUser',
+    // arguments for the procedure
+    reactive({ id }),
+    // useQuery configuration
     {
       immediate: true,
       initialData: { name: 'Bob' },
@@ -128,20 +141,41 @@ npm i vue @trpc/client@next @trpc/server@next
 ## Full Subscription Config
 ```ts
   const {
-    data,
-    subscribe,
-    unsubscribe,
-    subscribed,
-  } = useSubscription('uptime', {
-    initialData: { start: 0, uptime: 0 },
-    immediate: true,
-    onData(data) {
-      console.log('onData', data)
-    },
-    onError(err) {
-      console.log('onError', err)
-    },
-  })
+    data, 
+    error, 
+    subscribe, 
+    unsubscribe, 
+    subscribed, 
+    state, 
+    paused, 
+    pause, 
+    unpause,
+  } = useSubscription(
+    // path to the topic to subscribe to
+    'uptime', 
+    // input arguments for this subscription
+    'auth-token', 
+    // useSubscription configuration
+    {
+      initialData: { start: 0, uptime: 0 },
+      immediate: true,
+      onData(data) {
+        console.log('onData', data)
+      },
+      onError(err) {
+        console.log('onError', err)
+      },
+      onComplete() {
+        console.log('subscription completed')
+      },
+      onStarted() {
+        console.log('subscription started')
+      },
+      onStopped() {
+        console.log('subscription stopped')
+      },
+    }
+  )
 ```
 
 # ⚙️ Configuration Details
@@ -153,6 +187,8 @@ npm i vue @trpc/client@next @trpc/server@next
 | url                  | _(string)_ URL to your TRPC Endpoint                                                   |
 | wsUrl                | _(string)_ URL to your TRPC Websocket Endpoint                                         |
 | headers              | Reactive or plain object or a function that returns a reactive or plain object         |
+| logger               | Boolean or logger options to create a tRPC logger                                      |
+| transformer          | Data transformer to serialize response data                                            |
 | client               | Full tRPC client config                                                                |
 | isWebsocketConnected | _(Ref)_ Used to indicate websocket connection status when using a custom client config |
 | suppressWarnings     | _(boolean)_ Suppress any warning logs                                                  |
@@ -174,12 +210,15 @@ npm i vue @trpc/client@next @trpc/server@next
 
 ## useSubscription
 
-| Property  | Description                                                                 |
-| --------- | --------------------------------------------------------------------------- |
-| immediate | _(boolean)_ subscribe to the topic immediately                              |
-| reactive  | _(boolean or {headers: boolean, args: boolean})_ Enabled/Disable reactivity |
-| onData    | Callback when server emits a message for this topic                         |
-| onError   | Callback when the server emits and error for this topic                     |
+| Property   | Description                                                                 |
+| ---------- | --------------------------------------------------------------------------- |
+| immediate  | _(boolean)_ subscribe to the topic immediately                              |
+| reactive   | _(boolean or {headers: boolean, args: boolean})_ Enabled/Disable reactivity |
+| onData     | Callback when server emits a message for this topic                         |
+| onError    | Callback when the server emits an error for this topic                      |
+| onComplete | Callback when the server emits subscription completed                       |
+| onStarted  | Callback when a subscription is started                                     |
+| onStopped  | Callback when a subscription is stopped                                     |
 
 
 # 🎁 Return Details
@@ -193,7 +232,6 @@ npm i vue @trpc/client@next @trpc/server@next
 | executions  | _(Ref)_ array of procedure execution messages            |
 | useQuery    | useQuery Composable for this client                      |
 | useMutation | useMutation Composable for this client                   |
-****
 ## useQuery/useMutation
 
 | Property         | Description                                                                                                       |
@@ -208,12 +246,17 @@ npm i vue @trpc/client@next @trpc/server@next
 
 ## useSubscription
 
-| Property    | Description                                                              |
-| ----------- | ------------------------------------------------------------------------ |
-| data        | _(Ref)_ with the latest message for the topic                            |
-| subscribe   | subscribe to the topic on the server                                     |
-| unsubscribe | unsubscribe from topic on the server                                     |
-| subscribed  | _(Ref)_ Boolean indicating an active subscription to the topic procedure |
+| Property    | Description                                                                       |
+| ----------- | --------------------------------------------------------------------------------- |
+| data        | _(Ref)_ with the latest message for the topic                                     |
+| error       | _(Ref)_ with the latest error for the topic                                       |
+| subscribe   | subscribe to the topic on the server                                              |
+| unsubscribe | unsubscribe from topic on the server                                              |
+| subscribed  | _(Ref)_ Boolean indicating an active subscription to the topic                    |
+| state       | _(created, started, stopped, or completed)_ The current state of the subscription |
+| paused      | _(Ref)_  Indicates if reactivity is paused for arguments on this subscription     |
+| pause       | Pause reactivity tracking for arguments                                           |
+| unpause     | resume reactivity tracking for arguments                                          |
 
 # 💓 Thanks
 

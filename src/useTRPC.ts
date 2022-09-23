@@ -3,7 +3,9 @@ import {
   createTRPCProxyClient,
   createWSClient,
   httpLink,
+  loggerLink,
   splitLink,
+  TRPCLink,
   wsLink,
 } from '@trpc/client'
 import {
@@ -35,21 +37,29 @@ type ProcedureOptions<T> = {
 type SubscriptionOptions<T, E> = {
   onData?: (data: T) => void
   onError?: (data: E) => void
+  onComplete?: () => void
+  onStarted?: () => void
+  onStopped?: () => void
   initialData?: T
+  reactive?: boolean
   immediate?: boolean
-  resubscribeOnReconnect?: boolean
 }
 
-type ProcedureArgs<T> = T | (() => T | Promise<T>)
+type MaybeReactiveRequestArgs<T> = T | (() => T | Promise<T>)
+type MaybeReactiveSubscriptionArgs<T> = T | (() => T)
 
 type UseTRPCOptions<T extends AnyRouter> = {
   url?: Parameters<typeof httpLink>[0]['url']
   headers?: Parameters<typeof httpLink>[0]['headers']
   wsUrl?: string
+  logger?: boolean | Parameters<typeof loggerLink>[0]
+  transformer?: Parameters<typeof createTRPCProxyClient>[0]['transformer']
   client?: CreateTRPCClientOptions<T>
   isWebsocketConnected?: Ref<boolean>
   suppressWarnings?: boolean
 }
+
+type SubscriptionState = 'started' | 'stopped' | 'completed' | 'created'
 
 /**
  * tRPC Composable provides access to the client, mutations and queries
@@ -57,15 +67,17 @@ type UseTRPCOptions<T extends AnyRouter> = {
  * @param options.url HTTP url for tRPC client
  * @param options.headers Headers to use for this client, can be reactive and changes will execute all active procedures
  * @param options.wsUrl Websocket URL for tRPC client
+ * @param options.logger Boolean to enable the default logger, or a logger config object
+ * @param options.transformer Custom data transformer to serialize response data
  * @param options.client Full tRPC client config when not using url/wsUrl simple parameters
- * @param options.isWebsocketConnected When using custom client config this ref can be used to indicate if the websocket is connected. This is used to resubscribe to subscriptions when the websocket reconnects.
+ * @param options.isWebsocketConnected When using custom client config this ref can be used to indicate if the websocket is connected. It is used just as a readonly passthrough for consistency
  * @param options.suppressWarnings Suppress any use-tRPC warnings
  */
 export const useTRPC = <Router extends AnyRouter>(options: UseTRPCOptions<Router>) => {
   // Used to track the websocket state. This is used to resubscribe to subscriptions when the websocket reconnects.
   const { isWebsocketConnected: externalIsWebsocketConnected } = options
 
-  // If the user is using a custom client config we need to track the websocket state manually
+  // If the user is using a custom client config they need to track the websocket state manually
   // we provide a ref that can be used to indicate if the websocket is connected
   const isWebsocketConnected =
     !options.wsUrl && externalIsWebsocketConnected ? computed(() => externalIsWebsocketConnected.value) : ref(false)
@@ -88,6 +100,10 @@ export const useTRPC = <Router extends AnyRouter>(options: UseTRPCOptions<Router
     : undefined
 
   const httpLinkConfig = options.url ? httpLink({ url: options.url, headers: options.headers }) : undefined
+
+  const loggerLinkConfig = options.logger
+    ? (loggerLink(options.logger === true ? {} : options.logger) as TRPCLink<Router>)
+    : undefined
 
   const clientOptions = options.client
     ? options.client
@@ -114,7 +130,12 @@ export const useTRPC = <Router extends AnyRouter>(options: UseTRPCOptions<Router
     : undefined
 
   if (!clientOptions) throw Error('URL, WsURL, or Client Configuration Required')
-  const client = createTRPCProxyClient<Router>(clientOptions)
+
+  if (loggerLinkConfig) clientOptions.links.unshift(loggerLinkConfig)
+  const client = createTRPCProxyClient<Router>({
+    transformer: options.transformer,
+    ...clientOptions,
+  })
 
   // Execution tracking gives users a way to present loading indicators
   const activeExecutions = ref(new Map<number, string | undefined>())
@@ -147,7 +168,7 @@ export const useTRPC = <Router extends AnyRouter>(options: UseTRPCOptions<Router
      */
     return <P extends inferProcedureNames<Router, Method>>(
       procedure: P,
-      args: ProcedureArgs<inferProcedureInput<inferProcedureValues<Router, P>>>,
+      args: MaybeReactiveRequestArgs<inferProcedureInput<inferProcedureValues<Router, P>>>,
       {
         immediate,
         initialData,
@@ -195,9 +216,11 @@ export const useTRPC = <Router extends AnyRouter>(options: UseTRPCOptions<Router
         console.warn(`Async Arguments cannot be reactive. Attempted on ${method}.${procedure}`)
 
       // Reactive value of the procedure result
-      const data = shallowRef<typeof initialData>(initialData)
+      const _data = shallowRef<typeof initialData>(initialData)
+      const data = readonly(_data)
       // Reactive value of the procedure error
-      const error = ref()
+      const _error = ref()
+      const error = readonly(_error)
 
       // Pausing will prevent the procedure from executing reactively from args or headers
       // manually calling the procedure will still execute
@@ -217,9 +240,9 @@ export const useTRPC = <Router extends AnyRouter>(options: UseTRPCOptions<Router
       const _execute = async () => {
         try {
           const _args = hasArgsFn ? await (args as MaybeAsyncFn)() : args
-          data.value = (await fn[method](_args)) as UnwrapRef<typeof data>
+          _data.value = (await fn[method](_args)) as UnwrapRef<typeof _data>
         } catch (e) {
-          error.value = e
+          _error.value = e
         }
       }
 
@@ -254,6 +277,7 @@ export const useTRPC = <Router extends AnyRouter>(options: UseTRPCOptions<Router
       let immediatePromise: Promise<boolean> | undefined
       const result = {
         data,
+        error,
         execute,
         executing,
         pause,
@@ -289,13 +313,19 @@ export const useTRPC = <Router extends AnyRouter>(options: UseTRPCOptions<Router
    * @param topic dot notation path to the topic you want to subscribe to
    * @param params.onData callback function that will be called for each message
    * @param params.onError callback function that will be called if an error occurs
+   * @param params.onComplete callback function that will be called when a subscription is completed
+   * @param params.onStarted callback function that will be called when a subscription is started
+   * @param params.onStopped callback function that will be called when a subscription is stopped
    * @param params.initialData initial data to use for the reactive data property
    * @param params.immediate immediately subscribe to this topic (default true)
-   * @param params.resubscribeOnReconnect automatically resubscribe to the topic on socket reconnect
+   * @param params.reactive enable reactivity for the subscription arguments (default true)
    * @returns
    */
   const useSubscription = <
     P extends inferProcedureNames<Router, 'subscription'>,
+    I extends inferProcedureInput<inferProcedureValues<Router, P>> = inferProcedureInput<
+      inferProcedureValues<Router, P>
+    >,
     O extends inferProcedureValues<Router, P>['_def']['_output_out'] = inferProcedureValues<
       Router,
       P
@@ -303,21 +333,47 @@ export const useTRPC = <Router extends AnyRouter>(options: UseTRPCOptions<Router
     T extends [any, any] = O extends Observable<infer O, infer E> ? [O, E] : [never, never]
   >(
     topic: P,
-    { onData, onError, initialData, immediate, resubscribeOnReconnect }: SubscriptionOptions<T[0], T[1]> = {}
+    args: MaybeReactiveSubscriptionArgs<I>,
+    {
+      onData,
+      onError,
+      onComplete,
+      onStarted,
+      onStopped,
+      initialData,
+      immediate,
+      reactive,
+    }: SubscriptionOptions<T[0], T[1]> = {}
   ) => {
     // Lets default to immediately subscribing to the topic
     if (immediate === undefined) immediate = true
+    if (reactive === undefined) reactive = true
     // Reactive data with the latest result from the subscription topic
     // Seeded with initial data if provided
-    const data = ref<T[0]>(initialData)
+    const _data = ref<T[0]>(initialData)
+    const data = readonly(_data)
     // Reactive error with the latest error from the subscription topic
-    const error = ref<T[1]>()
+    const _error = ref<T[1]>()
+    const error = readonly(_error)
+    // Reactive boolean indicating if the subscription is currently started
+    const _state = ref<SubscriptionState>('created')
+    const state = readonly(_state)
 
     // Convert the dot notation path back into a subscription resolver
     const path = topic.split('.')
     const resolver = path.reduce<any>((acc, curr) => acc[curr], client) as {
       subscribe: (input: void | undefined, opts: Partial<TRPCSubscriptionObserver<T[0], T[1]>>) => Unsubscribable
     }
+
+    const hasArgsFn = typeof args === 'function'
+    const isArgsFnAsync = hasArgsFn && args.constructor.name === 'AsyncFunction'
+    const trackReactiveArgs = reactive === true && ((args && isReactive(args)) || hasArgsFn)
+    const paused = ref(false)
+    const pause = () => (paused.value = true)
+    const unpause = () => (paused.value = false)
+
+    if (!options.suppressWarnings && isArgsFnAsync && trackReactiveArgs)
+      console.warn(`Async Arguments cannot be reactive for subscription to ${topic}.`)
 
     let _unsubscribe: Unsubscribable['unsubscribe'] | undefined
     const _subscribed = ref(false)
@@ -327,44 +383,43 @@ export const useTRPC = <Router extends AnyRouter>(options: UseTRPCOptions<Router
     const _subscribe = () => {
       if (_subscribed.value) return
 
-      const { unsubscribe } = resolver.subscribe(undefined, {
-        onData(_data) {
-          data.value = _data
-          if (onData) onData(_data)
+      const _args = hasArgsFn ? (args as Fn)() : args
+      const { unsubscribe } = resolver.subscribe(_args, {
+        onData(value) {
+          _data.value = value
+          if (onData) onData(value)
         },
-        onError(_error) {
-          error.value = _error
-          if (onError) onError(_error)
+        onError(value) {
+          _error.value = value
+          if (onError) onError(value)
+        },
+        onComplete() {
+          _state.value = 'completed'
+          if (onComplete) onComplete()
+        },
+        onStarted() {
+          _state.value = 'started'
+          if (onStarted) onStarted()
+        },
+        onStopped() {
+          _state.value = 'stopped'
+          if (onStopped) onStopped()
         },
       })
       _subscribed.value = true
 
       return () => {
-        _subscribed.value = false
         unsubscribe()
+        _subscribed.value = false
       }
     }
     // Here we mask the original subscribe function with our own public version
     // so we can assure that the unsubscribe function is always available and up to date
-    const subscribe = () => (_unsubscribe = _subscribe())
+    const subscribe = async () => (_unsubscribe = _subscribe())
     const unsubscribe = () => _unsubscribe && _unsubscribe()
 
     // Make it so 👉
     if (immediate) subscribe()
-
-    // Monitor for web socket disconnects and reconnects
-    // if we disconnect flag it here so we know to resubscribe on reconnect
-    let hasDisconnected = false
-    watch(isWebsocketConnected, (connected, oldConnected) => {
-      if (oldConnected && !connected) {
-        hasDisconnected = true
-        _subscribed.value = false
-        if (resubscribeOnReconnect) unsubscribe()
-      } else if (hasDisconnected && !oldConnected && connected) {
-        if (resubscribeOnReconnect) subscribe()
-        hasDisconnected = false
-      }
-    })
 
     // Cleanup on scope disposal
     if (getCurrentScope())
@@ -373,7 +428,18 @@ export const useTRPC = <Router extends AnyRouter>(options: UseTRPCOptions<Router
         unsubscribe && unsubscribe()
       })
 
-    return { data, error, subscribe, unsubscribe, subscribed }
+    // Watch for changes in args and resubscribe with new args
+    if (!isArgsFnAsync && trackReactiveArgs) {
+      watch(hasArgsFn ? () => (args as Fn)() : args, async () => {
+        if (paused.value || !_subscribed.value) return
+
+        unsubscribe()
+        await nextTick()
+        subscribe()
+      })
+    }
+
+    return { data, error, subscribe, unsubscribe, subscribed, state, paused, pause, unpause }
   }
 
   return {

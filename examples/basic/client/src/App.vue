@@ -19,17 +19,17 @@
   const loading = refThrottled(isExecuting, 750)
   const messages = refThrottled(executions, 750)
 
-  const {
-    data: userCountData,
-    subscribe,
-    unsubscribe,
-    subscribed,
-  } = useSubscription('uptime', { initialData: { start: 0, uptime: 0 }, resubscribeOnReconnect: false })
-
   const id = ref(0)
   const { data } = useQuery('getUser', reactive({ id }), { msg: 'Loading User', immediate: true })
 
-  useQuery('getUser', reactive({ id: 1 }))
+  const {
+    data: uptimeData,
+    subscribe,
+    unsubscribe,
+    subscribed,
+  } = useSubscription('uptime', () => id.value, {
+    initialData: { start: 0, uptime: 0, id: id.value },
+  })
 </script>
 
 <template>
@@ -43,7 +43,7 @@
   </div>
   <div class="row">
     <div class="indicator" :class="{ active: subscribed }"></div>
-    <p>{{ userCountData?.uptime }}seconds</p>
+    <p>{{ uptimeData?.uptime }}seconds for User ID #{{ uptimeData.id }}</p>
   </div>
 
   <div class="row">
