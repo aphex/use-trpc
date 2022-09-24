@@ -1,7 +1,7 @@
 {
   "name": "use-trpc",
   "version": "1.0.0-beta.0",
-  "description": "",
+  "description": "Vue composable for tRPC v10",
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
