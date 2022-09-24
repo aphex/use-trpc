@@ -2,4 +2,4 @@ src
 tests
 examples
 build.config.ts
-tsconfig.ts
+tsconfig.json
