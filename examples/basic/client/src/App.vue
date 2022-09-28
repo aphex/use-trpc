@@ -20,7 +20,7 @@
   const messages = refThrottled(executions, 750)
 
   const id = ref(0)
-  const { data } = useQuery('getUser', reactive({ id }), { msg: 'Loading User', immediate: true })
+  const { data, abortController } = useQuery('getUser', reactive({ id }), { msg: 'Loading User', immediate: true })
 
   const {
     data: uptimeData,
@@ -29,6 +29,8 @@
     subscribed,
   } = useSubscription('uptime', () => id.value, {
     initialData: { start: 0, uptime: 0, id: id.value },
+    // Force reactive tracking of the args function
+    reactive: true,
   })
 </script>
 
@@ -43,7 +45,7 @@
   </div>
   <div class="row">
     <div class="indicator" :class="{ active: subscribed }"></div>
-    <p>{{ uptimeData?.uptime }}seconds for User ID #{{ uptimeData.id }}</p>
+    <p>{{ uptimeData?.uptime }}seconds for User ID #{{ uptimeData?.id }}</p>
   </div>
 
   <div class="row">
@@ -51,7 +53,10 @@
     <button @click="unsubscribe">Unsubscribe</button>
   </div>
   <pre>{{ data }}</pre>
-  <button @click="id = Math.round(Math.random() * 500)">Get User</button>
+  <div class="row">
+    <button @click="id = Math.round(Math.random() * 500)">Get User</button>
+    <button @click="abortController?.abort">Cancel</button>
+  </div>
 </template>
 
 <style scoped>

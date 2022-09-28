@@ -1,6 +1,6 @@
 {
   "name": "use-trpc",
-  "version": "1.0.0-beta.1",
+  "version": "1.0.0-beta.2",
   "description": "Vue composable for tRPC v10",
   "repository": "github:aphex/use-trpc",
   "main": "./dist/index.cjs",

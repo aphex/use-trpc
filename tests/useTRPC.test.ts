@@ -5,7 +5,7 @@ import { createHTTPServer } from '@trpc/server/adapters/standalone'
 import { applyWSSHandler } from '@trpc/server/adapters/ws'
 import { observable } from '@trpc/server/observable'
 import { EventEmitter } from 'events'
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 import { nextTick, reactive, ref, Ref, watch } from 'vue-demi'
 import ws, { WebSocketServer } from 'ws'
 import { z } from 'zod'
@@ -107,7 +107,14 @@ beforeAll(() => {
 })
 
 // useQuery and useMutation both use the same code, so we just pick on here to test
-describe('useQuery', () => {
+describe('useQuery/useMutation', () => {
+  it('data should be set to initialData', async () => {
+    const { useQuery } = create()
+    const { data } = useQuery('getUser', { name: 'Bob' }, { initialData: 'Hello' })
+
+    await nextTick()
+    expect(data.value).toBe('Hello')
+  })
   it('should update data on next tick when set to immediate execution', async () => {
     const { useQuery } = create()
     const { data, immediatePromise } = useQuery('getUser', { name: 'Bob' }, { immediate: true })
@@ -124,83 +131,179 @@ describe('useQuery', () => {
     expect(data.value).toBe('Hello, Bob!')
   })
 
-  it('should update data when a reactive argument changed', async () => {
-    const { useQuery } = create()
-    const args = reactive({
-      name: 'Steve',
-    })
-    const { data, executing } = useQuery('getUser', args)
+  describe('reactive headers', () => {
+    it('should update data when a reactive headers changed', async () => {
+      const headers = reactive({
+        Authorization: 'no-token',
+      })
 
-    args.name = 'Bob'
-    await untilFalsy(executing)
-    expect(data.value).toBe('Hello, Bob!')
-  })
+      const { useQuery } = create({ headers })
+      const { data, executing } = useQuery('getUser', { name: 'Bob' })
 
-  it('should update data when a reactive headers changed', async () => {
-    const headers = reactive({
-      Authorization: 'no-token',
-    })
-
-    const { useQuery } = create({ headers })
-    const { data, executing } = useQuery('getUser', { name: 'Bob' })
-
-    headers.Authorization = 'jwt-token'
-    await nextTick()
-    expect(executing.value).toBe(true)
-    await untilFalsy(executing)
-    expect(data.value).toBe('Hello, Bob!')
-  })
-
-  it('should only execute once if multiple reactive properties are changed', async () => {
-    const headers = reactive({
-      Authorization: 'no-token',
-    })
-    const args = reactive({
-      name: 'Steve',
+      headers.Authorization = 'jwt-token'
+      await nextTick()
+      expect(executing.value).toBe(true)
+      await untilFalsy(executing)
+      expect(data.value).toBe('Hello, Bob!')
     })
 
-    const { useQuery, executions } = create({ headers })
-    useQuery('getUser', args)
+    it('should update data when a ref headers as a function changed when forced', async () => {
+      const auth = ref('no-token')
 
-    headers.Authorization = 'jwt-token'
-    args.name = 'Bob'
-    await nextTick()
-    expect(executions.value.length).toBe(1)
-  })
+      const { useQuery } = create({
+        headers: () => ({
+          Authorization: auth.value,
+        }),
+      })
+      const { executing, data } = useQuery('getUser', { name: 'Bob' }, { reactive: { headers: true } })
 
-  it('should only execute once if execute is called multiple times', async () => {
-    const { useQuery, executions } = create()
-    const { execute } = useQuery('getUser', { name: 'Bob' })
-
-    for (let i = 0; i < 10; i++) execute()
-    await nextTick()
-    expect(executions.value.length).toBe(1)
-  })
-
-  it('should not execute for reactive changes if reactivity is false', async () => {
-    const args = reactive({
-      name: 'Steve',
+      auth.value = 'jwt-token'
+      await nextTick()
+      expect(executing.value).toBe(true)
+      await untilFalsy(executing)
+      expect(data.value).toBe('Hello, Bob!')
     })
-    const { useQuery, executions } = create()
-    useQuery('getUser', args, { reactive: false })
 
-    args.name = 'Bob'
-    await nextTick()
-    expect(executions.value.length).toBe(0)
+    it('should not update data when a reactive headers as a function changed', async () => {
+      const headers = reactive({
+        Authorization: 'no-token',
+      })
+
+      const { useQuery } = create({ headers: () => headers })
+      const { executing } = useQuery('getUser', { name: 'Bob' })
+
+      headers.Authorization = 'jwt-token'
+      await nextTick()
+      expect(executing.value).toBe(false)
+    })
+
+    it('should not update data when a ref headers as a function changed', async () => {
+      const auth = ref('no-token')
+
+      const { useQuery } = create({
+        headers: () => ({
+          Authorization: auth.value,
+        }),
+      })
+      const { executing } = useQuery('getUser', { name: 'Bob' })
+
+      auth.value = 'jwt-token'
+      await nextTick()
+      expect(executing.value).toBe(false)
+    })
   })
 
-  it('data should be set to initialData', async () => {
-    const { useQuery } = create()
-    const { data } = useQuery('getUser', { name: 'Bob' }, { initialData: 'Hello' })
+  describe('reactive ags', () => {
+    it('should update data when a reactive argument changed', async () => {
+      const { useQuery } = create()
+      const args = reactive({
+        name: 'Steve',
+      })
+      const { data, executing } = useQuery('getUser', args)
 
-    await nextTick()
-    expect(data.value).toBe('Hello')
+      args.name = 'Bob'
+      await untilFalsy(executing)
+      expect(data.value).toBe('Hello, Bob!')
+    })
+
+    it('should pickup new reactive values when manually executed', async () => {
+      const args = reactive({
+        name: 'Steve',
+      })
+      const { useQuery } = create()
+      const { execute, data } = useQuery('getUser', args, { reactive: { args: false } })
+
+      args.name = 'Bob'
+      await execute()
+      expect(data.value).toBe('Hello, Bob!')
+    })
+
+    it('should pickup new function arg values when manually executed', async () => {
+      const name = ref('Steve')
+      const { useQuery } = create()
+      const { execute, executing, data } = useQuery('getUser', () => ({ name: name.value }))
+
+      name.value = 'Bob'
+      execute()
+      await untilFalsy(executing)
+      expect(data.value).toBe('Hello, Bob!')
+    })
+
+    it('should only execute once if multiple reactive properties are changed', async () => {
+      const headers = reactive({
+        Authorization: 'no-token',
+      })
+      const args = reactive({
+        name: 'Steve',
+      })
+
+      const { useQuery, executions } = create({ headers })
+      useQuery('getUser', args)
+
+      headers.Authorization = 'jwt-token'
+      args.name = 'Bob'
+      await nextTick()
+      expect(executions.value.length).toBe(1)
+    })
+
+    it('should only execute once if execute is called multiple times', async () => {
+      const { useQuery, executions } = create()
+      const { execute } = useQuery('getUser', { name: 'Bob' })
+
+      for (let i = 0; i < 10; i++) execute()
+      await nextTick()
+      expect(executions.value.length).toBe(1)
+    })
+
+    it('should not execute for reactive changes if reactivity is false', async () => {
+      const args = reactive({
+        name: 'Steve',
+      })
+      const { useQuery, executions } = create()
+      useQuery('getUser', args, { reactive: false })
+
+      args.name = 'Bob'
+      await nextTick()
+      expect(executions.value.length).toBe(0)
+    })
+
+    it('should not execute for reactive changes of a function', async () => {
+      const args = reactive({
+        name: 'Steve',
+      })
+      const { useQuery, executions } = create()
+      useQuery('getUser', () => args)
+
+      args.name = 'Bob'
+      await nextTick()
+      expect(executions.value.length).toBe(0)
+    })
+
+    it('should not execute for ref changes in a function', async () => {
+      const name = ref('Steve')
+      const { useQuery, executions } = create()
+      useQuery('getUser', () => ({ name: name.value }))
+
+      name.value = 'Bob'
+      await nextTick()
+      expect(executions.value.length).toBe(0)
+    })
+
+    it('should execute for ref changes in a function when forced', async () => {
+      const name = ref('Steve')
+      const { useQuery, executions } = create()
+      useQuery('getUser', () => ({ name: name.value }), { reactive: true })
+
+      name.value = 'Bob'
+      await nextTick()
+      expect(executions.value.length).toBe(1)
+    })
   })
 })
 
 describe('useSubscription', () => {
   it('should update subscription active to true when created', async () => {
-    const { useSubscription, client } = create()
+    const { useSubscription } = create()
     const { state, unsubscribe } = useSubscription('latest', { name: 'test' })
 
     await expect(watchFor(state, 'started')).resolves.not.toThrowError()

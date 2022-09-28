@@ -26,13 +26,8 @@
 npm i use-trpc
 ```
 
-# 📦 Peer Dependencies 
-
-```bash
-npm i vue @trpc/client@next @trpc/server@next
-```
-
 # 🎉 Basic Usage
+By default `reactive` objects will automatically be tracked and trigger a new execution when they change
 
 ```vue
 <script setup lang="ts">
@@ -82,6 +77,18 @@ npm i vue @trpc/client@next @trpc/server@next
   id.value = 10
 ```
 
+## Opt-Out of Reactivity
+When using a getter function for arguments reactive tracking will not be automatic. To Opt back 
+into it you can set `reactive` to `true` and the getter function will be watched
+
+```ts
+  const id = ref(0)
+  const { data } = useQuery('getUser', () => reactive({ id }))
+
+  // Will not trigger an execution of getUser with the id of 10
+  id.value = 10
+```
+
 ## Full HTTP Client Config
 ```ts
   const token = ref('')
@@ -124,13 +131,14 @@ npm i vue @trpc/client@next @trpc/server@next
   const { data, execute, executing, immediatePromise, pause, paused, unpause } = useQuery(
     // path to the procedure
     'getUser',
-    // arguments for the procedure
+    // arguments for the procedure could also be `{id}`, `() => ({id})`, or `() => reactive({id})`
     reactive({ id }),
     // useQuery configuration
     {
       immediate: true,
       initialData: { name: 'Bob' },
       msg: 'Loading User',
+      // Full control of reactive tracking
       reactive: {
         args: true,
         headers: false
@@ -153,7 +161,7 @@ npm i vue @trpc/client@next @trpc/server@next
   } = useSubscription(
     // path to the topic to subscribe to
     'uptime', 
-    // input arguments for this subscription
+    // input arguments for this subscription (can also be reactive, ref, or a getter function)
     'auth-token', 
     // useSubscription configuration
     {
@@ -191,7 +199,7 @@ npm i vue @trpc/client@next @trpc/server@next
 | transformer          | Data transformer to serialize response data                                            |
 | client               | Full tRPC client config                                                                |
 | isWebsocketConnected | _(Ref)_ Used to indicate websocket connection status when using a custom client config |
-| suppressWarnings     | _(boolean)_ Suppress any warning logs                                                  |
+| silent               | _(boolean)_ Suppress any warning or error logs                                         |
 
 > **Warning**
 >
@@ -201,48 +209,54 @@ npm i vue @trpc/client@next @trpc/server@next
 
 ## useQuery/useMutation
 
-| Property    | Description                                                                 |
-| ----------- | --------------------------------------------------------------------------- |
-| immediate   | _(boolean)_ execute the procedure immediately                               |
-| reactive    | _(boolean or {headers: boolean, args: boolean})_ Enabled/Disable reactivity |
-| initialData | Seed data for the reactive data property                                    |
-| msg         | (string) Message to edd to execution array when this procedure runs         |
+| Property    | Description                                                              |
+| ----------- | ------------------------------------------------------------------------ |
+| immediate   | _(boolean)_ execute the procedure immediately                            |
+| initialData | Seed data for the reactive data property                                 |
+| reactive    | _(boolean or {headers: boolean, args: boolean})_ Force reactivity on/off |
+| msg         | (string) Message to edd to execution array when this procedure runs      |
 
 ## useSubscription
 
-| Property   | Description                                                                 |
-| ---------- | --------------------------------------------------------------------------- |
-| immediate  | _(boolean)_ subscribe to the topic immediately                              |
-| reactive   | _(boolean or {headers: boolean, args: boolean})_ Enabled/Disable reactivity |
-| onData     | Callback when server emits a message for this topic                         |
-| onError    | Callback when the server emits an error for this topic                      |
-| onComplete | Callback when the server emits subscription completed                       |
-| onStarted  | Callback when a subscription is started                                     |
-| onStopped  | Callback when a subscription is stopped                                     |
+| Property    | Description                                                              |
+| ----------- | ------------------------------------------------------------------------ |
+| onData      | Callback when server emits a message for this topic                      |
+| onError     | Callback when the server emits an error for this topic                   |
+| onStarted   | Callback when a subscription is started                                  |
+| onComplete  | Callback when the server emits subscription completed                    |
+| onStopped   | Callback when a subscription is stopped                                  |
+| initialData | Seed data for the reactive data property                                 |
+| immediate   | _(boolean)_ subscribe to the topic immediately                           |
+| reactive    | _(boolean or {headers: boolean, args: boolean})_ Force reactivity on/off |
 
 
 # 🎁 Return Details
 
 ## useTRPC
 
-| Property    | Description                                              |
-| ----------- | -------------------------------------------------------- |
-| client      | tRPC client for manual execution of procedures           |
-| isExecuting | _(Ref)_ boolean indicating if any procedure is executing |
-| executions  | _(Ref)_ array of procedure execution messages            |
-| useQuery    | useQuery Composable for this client                      |
-| useMutation | useMutation Composable for this client                   |
+| Property        | Description                                              |
+| --------------- | -------------------------------------------------------- |
+| client          | tRPC client for manual execution of procedures           |
+| isExecuting     | _(Ref)_ boolean indicating if any procedure is executing |
+| executions      | _(Ref)_ array of procedure execution messages            |
+| connected       | _(Ref)_ boolean indicates if the socket is connected     |
+| useQuery        | useQuery Composable for this client                      |
+| useMutation     | useMutation Composable for this client                   |
+| useSubscription | useSubscription Composable for this client               |
+
 ## useQuery/useMutation
 
-| Property         | Description                                                                                                       |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------- |
-| data             | _(Ref)_ with the latest response value from the procedure                                                         |
-| execute          | Function to run the procedure and update all reactive properties                                                  |
-| executing        | _(Ref)_ indicating whether this procedure is currently running                                                    |
-| pause            | Function to pause reactivity tracking for this procedure                                                          |
-| unpause          | Function to resume reactivity tracking for this procedure                                                         |
-| pause            | _(Ref)_ indicating if reactivity is paused                                                                        |
-| immediatePromise | When composable is created with `{immediate: true}` this promise can be awaited to assume execution has completed |
+| Property         | Description                                                                                             |
+| ---------------- | ------------------------------------------------------------------------------------------------------- |
+| data             | _(Ref)_ with the latest response value from the procedure                                               |
+| error            | _(Ref)_ with the latest error value from the procedure                                                  |
+| execute          | Function to run the procedure and update all reactive properties                                        |
+| executing        | _(Ref)_ indicating whether this procedure is currently running                                          |
+| pause            | Function to pause reactivity tracking for this procedure                                                |
+| unpause          | Function to resume reactivity tracking for this procedure                                               |
+| pause            | _(Ref)_ indicating if reactivity is paused                                                              |
+| abortController  | _(Ref)_ ref to the current executions abort controller                                                  |
+| immediatePromise | When composable is created with `{ immediate: true }` this promise can be awaited for initial execution |
 
 ## useSubscription
 
@@ -252,6 +266,7 @@ npm i vue @trpc/client@next @trpc/server@next
 | error       | _(Ref)_ with the latest error for the topic                                       |
 | subscribe   | subscribe to the topic on the server                                              |
 | unsubscribe | unsubscribe from topic on the server                                              |
+| resubscribe | shortcut to unsubscribe and then subscribe to topic on the server                 |
 | subscribed  | _(Ref)_ Boolean indicating an active subscription to the topic                    |
 | state       | _(created, started, stopped, or completed)_ The current state of the subscription |
 | paused      | _(Ref)_  Indicates if reactivity is paused for arguments on this subscription     |

@@ -22,71 +22,68 @@ import {
   watch,
 } from 'vue-demi'
 
-import type { AnyRouter, inferProcedureInput, inferProcedureOutput, ProcedureType } from '@trpc/server'
-import type { Fn, inferProcedureNames, inferProcedureValues, MaybeAsyncFn } from './types'
-import type { Observable, Unsubscribable } from '@trpc/server/observable'
 import type { TRPCSubscriptionObserver } from '@trpc/client/dist/internals/TRPCClient'
+import type { AnyRouter, inferProcedureInput, inferProcedureOutput, ProcedureType } from '@trpc/server'
+import type { Observable, Unsubscribable } from '@trpc/server/observable'
+import type { Fn, inferProcedureNames, inferProcedureValues, MaybeAsyncFn } from './types'
 
-type ProcedureOptions<T> = {
+type UseProcedureConfig<D> = {
   immediate?: boolean
   reactive?: boolean | { headers?: boolean; args?: boolean }
-  initialData?: T
+  initialData?: D
   msg?: string
 }
+type ProcedureArgs<T> = T | (() => T | Promise<T>)
 
-type SubscriptionOptions<T, E> = {
-  onData?: (data: T) => void
+type UseSubscriptionConfig<D, E> = {
+  onData?: (data: D) => void
   onError?: (data: E) => void
   onComplete?: () => void
   onStarted?: () => void
   onStopped?: () => void
-  initialData?: T
+  initialData?: D
+  initialError?: E
   reactive?: boolean
   immediate?: boolean
 }
-
-type MaybeReactiveRequestArgs<T> = T | (() => T | Promise<T>)
-type MaybeReactiveSubscriptionArgs<T> = T | (() => T)
-
-type UseTRPCOptions<T extends AnyRouter> = {
-  url?: Parameters<typeof httpLink>[0]['url']
-  headers?: Parameters<typeof httpLink>[0]['headers']
-  wsUrl?: string
-  logger?: boolean | Parameters<typeof loggerLink>[0]
-  transformer?: Parameters<typeof createTRPCProxyClient>[0]['transformer']
-  client?: CreateTRPCClientOptions<T>
-  isWebsocketConnected?: Ref<boolean>
-  suppressWarnings?: boolean
-}
-
+type SubscriptionArgs<T> = T | (() => T)
 type SubscriptionState = 'started' | 'stopped' | 'completed' | 'created'
 
 /**
  * tRPC Composable provides access to the client, mutations and queries
  *
- * @param options.url HTTP url for tRPC client
- * @param options.headers Headers to use for this client, can be reactive and changes will execute all active procedures
- * @param options.wsUrl Websocket URL for tRPC client
- * @param options.logger Boolean to enable the default logger, or a logger config object
- * @param options.transformer Custom data transformer to serialize response data
- * @param options.client Full tRPC client config when not using url/wsUrl simple parameters
- * @param options.isWebsocketConnected When using custom client config this ref can be used to indicate if the websocket is connected. It is used just as a readonly passthrough for consistency
- * @param options.suppressWarnings Suppress any use-tRPC warnings
+ * @param config.url HTTP url for tRPC client
+ * @param config.headers Headers to use for this client, can be reactive and changes will execute all active procedures
+ * @param config.wsUrl Websocket URL for tRPC client
+ * @param config.logger Boolean to enable the default logger, or a logger config object
+ * @param config.transformer Custom data transformer to serialize response data
+ * @param config.client Full tRPC client config when not using url/wsUrl simple parameters
+ * @param config.isWebsocketConnected When using custom client config this ref can be used to indicate if the websocket is connected. It is used just as a readonly passthrough for consistency
+ * @param config.silent Suppress any use-tRPC warnings or errors
  */
-export const useTRPC = <Router extends AnyRouter>(options: UseTRPCOptions<Router>) => {
+export const useTRPC = <Router extends AnyRouter>(config: {
+  url?: Parameters<typeof httpLink>[0]['url']
+  headers?: Parameters<typeof httpLink>[0]['headers']
+  wsUrl?: string
+  logger?: boolean | Parameters<typeof loggerLink>[0]
+  transformer?: Parameters<typeof createTRPCProxyClient>[0]['transformer']
+  client?: CreateTRPCClientOptions<Router>
+  isWebsocketConnected?: Ref<boolean>
+  silent?: boolean
+}) => {
   // Used to track the websocket state. This is used to resubscribe to subscriptions when the websocket reconnects.
-  const { isWebsocketConnected: externalIsWebsocketConnected } = options
+  const { isWebsocketConnected: _isWebsocketConnected, headers } = config
 
   // If the user is using a custom client config they need to track the websocket state manually
   // we provide a ref that can be used to indicate if the websocket is connected
   const isWebsocketConnected =
-    !options.wsUrl && externalIsWebsocketConnected ? computed(() => externalIsWebsocketConnected.value) : ref(false)
+    !config.wsUrl && _isWebsocketConnected ? computed(() => _isWebsocketConnected.value) : ref(false)
   const connected = readonly(isWebsocketConnected)
 
-  const wsLinkConfig = options.wsUrl
+  const wsLinkConfig = config.wsUrl
     ? wsLink({
         client: createWSClient({
-          url: options.wsUrl,
+          url: config.wsUrl,
           onClose() {
             // We cast these as typescript is not able to infer these will be regular refs
             // from just the `wsUrl` property
@@ -99,14 +96,14 @@ export const useTRPC = <Router extends AnyRouter>(options: UseTRPCOptions<Router
       })
     : undefined
 
-  const httpLinkConfig = options.url ? httpLink({ url: options.url, headers: options.headers }) : undefined
+  const httpLinkConfig = config.url ? httpLink({ url: config.url, headers: config.headers }) : undefined
 
-  const loggerLinkConfig = options.logger
-    ? (loggerLink(options.logger === true ? {} : options.logger) as TRPCLink<Router>)
+  const loggerLinkConfig = config.logger
+    ? (loggerLink(config.logger === true ? {} : config.logger) as TRPCLink<Router>)
     : undefined
 
-  const clientOptions = options.client
-    ? options.client
+  const clientOptions = config.client
+    ? config.client
     : httpLinkConfig && wsLinkConfig
     ? {
         links: [
@@ -133,7 +130,7 @@ export const useTRPC = <Router extends AnyRouter>(options: UseTRPCOptions<Router
 
   if (loggerLinkConfig) clientOptions.links.unshift(loggerLinkConfig)
   const client = createTRPCProxyClient<Router>({
-    transformer: options.transformer,
+    transformer: config.transformer,
     ...clientOptions,
   })
 
@@ -146,6 +143,7 @@ export const useTRPC = <Router extends AnyRouter>(options: UseTRPCOptions<Router
 
   let id = 0
   const addExecution = (msg?: string) => {
+    if (id >= Number.MAX_SAFE_INTEGER) id = 0
     id++
     activeExecutions.value.set(id, msg)
     return id
@@ -159,37 +157,45 @@ export const useTRPC = <Router extends AnyRouter>(options: UseTRPCOptions<Router
      *
      * @param procedure dot notation path to procedure
      * @param args Arguments to pass to procedure
-     * @param options.immediate Execute the procedure immediately
-     * @param options.initialData Initial data to use for reactive data
-     * @param options.reactive Make the data reactive, can be set to false to disable reactivity
-     * @param options.reactive.headers Make the headers reactive, can be set to false to disable reactivity
-     * @param options.reactive.args Make the args reactive, can be set to false to disable reactivity
-     * @param options.msg Message to display in the execution list
+     * @param procedureConfig.immediate Execute the procedure immediately
+     * @param procedureConfig.initialData Initial data to use for reactive data
+     * @param procedureConfig.reactive Force tracking on/off for both header and arg reactivity
+     * @param procedureConfig.reactive.headers Force tracking on/off for header reactivity
+     * @param procedureConfig.reactive.args Force tracking on/off for arg reactive
+     * @param procedureConfig.msg Message to display in the execution list
      */
-    return <P extends inferProcedureNames<Router, Method>>(
+    return <
+      P extends inferProcedureNames<Router, Method>,
+      I extends inferProcedureInput<inferProcedureValues<Router, P>> = inferProcedureInput<
+        inferProcedureValues<Router, P>
+      >,
+      O extends inferProcedureOutput<inferProcedureValues<Router, P>> = inferProcedureOutput<
+        inferProcedureValues<Router, P>
+      >
+    >(
       procedure: P,
-      args: MaybeReactiveRequestArgs<inferProcedureInput<inferProcedureValues<Router, P>>>,
-      {
-        immediate,
-        initialData,
-        reactive,
-        msg,
-      }: ProcedureOptions<inferProcedureOutput<inferProcedureValues<Router, P>>> = {}
+      ...[args, procedureConfig]: undefined extends O
+        ? [args?: ProcedureArgs<I>, procedureConfig?: UseProcedureConfig<O>]
+        : [args: ProcedureArgs<I>, procedureConfig?: UseProcedureConfig<O>]
     ) => {
+      procedureConfig = procedureConfig || {}
+      const { immediate, reactive, initialData, msg } = procedureConfig
+
       // Is this a Query or Mutation?
       const method = procedureType === 'query' ? 'query' : 'mutate'
 
-      // Lets default reactive to true
-      if (reactive === undefined) reactive = true
-
       // Determine the reactivity of the headers options
-      const headers = options.headers
-      const hasHeadersFn = typeof headers === 'function'
-      const isHeadersFnAsync = hasHeadersFn && headers.constructor.name === 'AsyncFunction'
-      const isHeaderReactivityEnabled = reactive === true || (typeof reactive === 'object' && reactive.headers)
-      const trackReactiveHeaders = isHeaderReactivityEnabled && ((headers && isReactive(headers)) || hasHeadersFn)
+      const areHeadersFn = typeof headers === 'function'
+      const areHeadersAsyncFn = areHeadersFn && headers.constructor.name === 'AsyncFunction'
+      const isHeaderReactivityTrue = reactive === true || (typeof reactive === 'object' && reactive.headers === true)
+      const isHeaderReactivityFalse = reactive === false || (typeof reactive === 'object' && reactive.headers === false)
+      const shouldTrackHeaderReactivity = isHeaderReactivityTrue
+        ? true
+        : isHeaderReactivityFalse
+        ? false
+        : headers && isReactive(headers)
 
-      if (!options.suppressWarnings && isHeaderReactivityEnabled && options.client && !options.headers) {
+      if (!config.silent && shouldTrackHeaderReactivity && config.client && !config.headers) {
         console.warn(
           [
             `Reactive headers are enabled for "${method}.${procedure}" but useTRPC was configured`,
@@ -197,26 +203,30 @@ export const useTRPC = <Router extends AnyRouter>(options: UseTRPCOptions<Router
             `If you are using HttpLink in your client and want to track headers, you must provide the headers`,
             `as an option to useTRPC as well.`,
             `If this does not apply to you you can suppress this warning by setting 'reactive.headers' to false`,
-            `in the options for "${method}.${procedure}" or setting 'suppressWarnings' to true in the useTRPC config.`,
+            `in the options for "${method}.${procedure}" or setting 'silent' to true in the useTRPC config.`,
           ].join('\n')
         )
       }
 
-      if (!options.suppressWarnings && isHeadersFnAsync && trackReactiveHeaders)
+      if (!config.silent && areHeadersAsyncFn && shouldTrackHeaderReactivity)
         console.warn(`Async headers cannot be reactive. Attempted on ${method}.${procedure}`)
 
       // Determine the reactivity of the procedure arguments
-      const hasArgsFn = typeof args === 'function'
-      const isArgsFnAsync = hasArgsFn && args.constructor.name === 'AsyncFunction'
-      const trackReactiveArgs =
-        (reactive === true || (typeof reactive === 'object' && reactive.args)) &&
-        ((args && isReactive(args)) || hasArgsFn)
+      const areArgsFn = typeof args === 'function'
+      const areArgsAsyncFn = areArgsFn && args.constructor.name === 'AsyncFunction'
+      const isArgReactivityTrue = reactive === true || (typeof reactive === 'object' && reactive.args === true)
+      const isArgReactivityFalse = reactive === false || (typeof reactive === 'object' && reactive.args === false)
+      const shouldTrackReactiveArgs = isArgReactivityTrue
+        ? true
+        : isArgReactivityFalse
+        ? false
+        : args && isReactive(args)
 
-      if (!options.suppressWarnings && isArgsFnAsync && trackReactiveArgs)
+      if (!config.silent && areArgsAsyncFn && shouldTrackReactiveArgs)
         console.warn(`Async Arguments cannot be reactive. Attempted on ${method}.${procedure}`)
 
       // Reactive value of the procedure result
-      const _data = shallowRef<typeof initialData>(initialData)
+      const _data = shallowRef(initialData)
       const data = readonly(_data)
       // Reactive value of the procedure error
       const _error = ref()
@@ -229,19 +239,22 @@ export const useTRPC = <Router extends AnyRouter>(options: UseTRPCOptions<Router
       const paused = ref(false)
       const pause = () => (paused.value = true)
       const unpause = () => (paused.value = false)
+      const abortController = ref<AbortController>()
 
       // Get the procedure from the client using the dot notation path
       const path = procedure.split('.')
       const fn = path.reduce<any>((acc, curr) => acc[curr], client) as any
 
-      // Internal execution function will actually call the procedure
+      // Internal execution function will call the procedure.
       // we protect this behind a scheduler so that procedures are not executed
       // multiple times within the same tick
       const _execute = async () => {
         try {
-          const _args = hasArgsFn ? await (args as MaybeAsyncFn)() : args
-          _data.value = (await fn[method](_args)) as UnwrapRef<typeof _data>
+          abortController.value = new AbortController()
+          const _args = areArgsFn ? await (args as MaybeAsyncFn)() : args
+          _data.value = (await fn[method](_args, { signal: abortController.value.signal })) as UnwrapRef<O>
         } catch (e) {
+          // if (!config.silent) console.error(e)
           _error.value = e
         }
       }
@@ -261,15 +274,15 @@ export const useTRPC = <Router extends AnyRouter>(options: UseTRPCOptions<Router
       }
 
       // Watch for changes in headers
-      if (!isHeadersFnAsync && trackReactiveHeaders) {
-        watch(hasHeadersFn ? () => headers() : headers, () => {
+      if (headers && !areHeadersAsyncFn && shouldTrackHeaderReactivity) {
+        watch(areHeadersFn ? () => headers() : headers, () => {
           if (!paused.value) execute()
         })
       }
 
       // Watch for changes in args
-      if (!isArgsFnAsync && trackReactiveArgs) {
-        watch(hasArgsFn ? () => (args as Fn)() : args, () => {
+      if (args && !areArgsAsyncFn && shouldTrackReactiveArgs) {
+        watch(areArgsFn ? () => (args as Fn)() : args, () => {
           if (!paused.value) execute()
         })
       }
@@ -283,6 +296,7 @@ export const useTRPC = <Router extends AnyRouter>(options: UseTRPCOptions<Router
         pause,
         unpause,
         paused,
+        abortController,
         immediatePromise,
       }
 
@@ -293,6 +307,9 @@ export const useTRPC = <Router extends AnyRouter>(options: UseTRPCOptions<Router
         })
       }
 
+      // Abort request on unmount / scope disposal
+      if (getCurrentScope()) onScopeDispose(() => abortController.value?.abort())
+
       return result
     }
   }
@@ -302,7 +319,7 @@ export const useTRPC = <Router extends AnyRouter>(options: UseTRPCOptions<Router
   const useMutation = createProcedureHandler('mutation')
 
   // Subscription composable requires lookups for the resulting data that is emitted from the server
-  // as well as socket reconnect logic. It also provides both reactive properties and a callback handler.
+  // as well as socket reconnect logic. It also provides both reactive properties and callback handlers.
   // Though reactive data is preferred the callback maybe be needed if your socket messages are the same
   // but still require action. For example the server only emits a `ping` every 10 seconds, the
   // reactive property would only update once, whereas the callback would be triggered for each message.
@@ -311,14 +328,15 @@ export const useTRPC = <Router extends AnyRouter>(options: UseTRPCOptions<Router
    * useSubscription composable to subscribe to a topic and reactively receive data
    *
    * @param topic dot notation path to the topic you want to subscribe to
-   * @param params.onData callback function that will be called for each message
-   * @param params.onError callback function that will be called if an error occurs
-   * @param params.onComplete callback function that will be called when a subscription is completed
-   * @param params.onStarted callback function that will be called when a subscription is started
-   * @param params.onStopped callback function that will be called when a subscription is stopped
-   * @param params.initialData initial data to use for the reactive data property
-   * @param params.immediate immediately subscribe to this topic (default true)
-   * @param params.reactive enable reactivity for the subscription arguments (default true)
+   * @param args input arguments to pass when subscribing
+   * @param subscriptionConfig.onData callback function that will be called for each message
+   * @param subscriptionConfig.onError callback function that will be called if an error occurs
+   * @param subscriptionConfig.onComplete callback function that will be called when a subscription is completed
+   * @param subscriptionConfig.onStarted callback function that will be called when a subscription is started
+   * @param subscriptionConfig.onStopped callback function that will be called when a subscription is stopped
+   * @param subscriptionConfig.initialData initial data to use for the reactive data property
+   * @param subscriptionConfig.immediate immediately subscribe to this topic (default true)
+   * @param subscriptionConfig.reactive force reactivity tracking on or off for the subscription arguments
    * @returns
    */
   const useSubscription = <
@@ -330,30 +348,25 @@ export const useTRPC = <Router extends AnyRouter>(options: UseTRPCOptions<Router
       Router,
       P
     >['_def']['_output_out'],
-    T extends [any, any] = O extends Observable<infer O, infer E> ? [O, E] : [never, never]
+    R extends [any, any] = O extends Observable<infer O, infer E> ? [O, E] : [never, never]
   >(
     topic: P,
-    args: MaybeReactiveSubscriptionArgs<I>,
-    {
-      onData,
-      onError,
-      onComplete,
-      onStarted,
-      onStopped,
-      initialData,
-      immediate,
-      reactive,
-    }: SubscriptionOptions<T[0], T[1]> = {}
+    ...[args, subscriptionConfig]: undefined extends I
+      ? [args?: SubscriptionArgs<I>, subscriptionConfig?: UseSubscriptionConfig<R[0], R[1]>]
+      : [args: SubscriptionArgs<I>, subscriptionConfig?: UseSubscriptionConfig<R[0], R[1]>]
   ) => {
+    subscriptionConfig = subscriptionConfig || {}
+    const { initialData, initialError, reactive } = subscriptionConfig
+    let { onData, onError, onComplete, onStarted, onStopped, immediate } = subscriptionConfig
+
     // Lets default to immediately subscribing to the topic
     if (immediate === undefined) immediate = true
-    if (reactive === undefined) reactive = true
     // Reactive data with the latest result from the subscription topic
     // Seeded with initial data if provided
-    const _data = ref<T[0]>(initialData)
+    const _data = shallowRef(initialData)
     const data = readonly(_data)
     // Reactive error with the latest error from the subscription topic
-    const _error = ref<T[1]>()
+    const _error = shallowRef(initialError)
     const error = readonly(_error)
     // Reactive boolean indicating if the subscription is currently started
     const _state = ref<SubscriptionState>('created')
@@ -362,24 +375,20 @@ export const useTRPC = <Router extends AnyRouter>(options: UseTRPCOptions<Router
     // Convert the dot notation path back into a subscription resolver
     const path = topic.split('.')
     const resolver = path.reduce<any>((acc, curr) => acc[curr], client) as {
-      subscribe: (input: void | undefined, opts: Partial<TRPCSubscriptionObserver<T[0], T[1]>>) => Unsubscribable
+      subscribe: (input: void | undefined, opts: TRPCSubscriptionObserver<R[0], R[1]>) => Unsubscribable
     }
 
     const hasArgsFn = typeof args === 'function'
-    const isArgsFnAsync = hasArgsFn && args.constructor.name === 'AsyncFunction'
-    const trackReactiveArgs = reactive === true && ((args && isReactive(args)) || hasArgsFn)
+    const trackReactiveArgs = reactive === true ? true : reactive === false ? false : args && isReactive(args)
     const paused = ref(false)
     const pause = () => (paused.value = true)
     const unpause = () => (paused.value = false)
-
-    if (!options.suppressWarnings && isArgsFnAsync && trackReactiveArgs)
-      console.warn(`Async Arguments cannot be reactive for subscription to ${topic}.`)
 
     let _unsubscribe: Unsubscribable['unsubscribe'] | undefined
     const _subscribed = ref(false)
     const subscribed = readonly(_subscribed)
     // We wrap this in a function so we can immediately execute it
-    // but also run the exact same code if the socket reconnects after a disconnect
+    // but also run the exact same code if reactive arguments change
     const _subscribe = () => {
       if (_subscribed.value) return
 
@@ -390,6 +399,7 @@ export const useTRPC = <Router extends AnyRouter>(options: UseTRPCOptions<Router
           if (onData) onData(value)
         },
         onError(value) {
+          if (!connected.value) _subscribed.value = false
           _error.value = value
           if (onError) onError(value)
         },
@@ -415,8 +425,13 @@ export const useTRPC = <Router extends AnyRouter>(options: UseTRPCOptions<Router
     }
     // Here we mask the original subscribe function with our own public version
     // so we can assure that the unsubscribe function is always available and up to date
-    const subscribe = async () => (_unsubscribe = _subscribe())
+    const subscribe = () => (_unsubscribe = _subscribe())
     const unsubscribe = () => _unsubscribe && _unsubscribe()
+    const resubscribe = async () => {
+      unsubscribe()
+      await nextTick()
+      subscribe()
+    }
 
     // Make it so 👉
     if (immediate) subscribe()
@@ -424,22 +439,33 @@ export const useTRPC = <Router extends AnyRouter>(options: UseTRPCOptions<Router
     // Cleanup on scope disposal
     if (getCurrentScope())
       onScopeDispose(() => {
-        onData = onError = undefined
+        onData = onError = onComplete = onStarted = onStopped = undefined
         unsubscribe && unsubscribe()
       })
 
     // Watch for changes in args and resubscribe with new args
-    if (!isArgsFnAsync && trackReactiveArgs) {
+    if (args && trackReactiveArgs) {
       watch(hasArgsFn ? () => (args as Fn)() : args, async () => {
         if (paused.value || !_subscribed.value) return
 
-        unsubscribe()
-        await nextTick()
-        subscribe()
+        await resubscribe()
       })
     }
 
-    return { data, error, subscribe, unsubscribe, subscribed, state, paused, pause, unpause }
+    // Watch for changes in connection state and resubscribe if needed
+    // Handling this in the composable for now as we wait for
+    // https://github.com/trpc/trpc/issues/2776 to get solved
+    let hasEverConnected: boolean
+    watch(
+      connected,
+      (current, previous) => {
+        if (hasEverConnected && current && !previous) subscribe()
+        if (!hasEverConnected && current) hasEverConnected = true
+      },
+      { immediate: true }
+    )
+
+    return { data, error, subscribe, unsubscribe, resubscribe, subscribed, state, paused, pause, unpause }
   }
 
   return {
