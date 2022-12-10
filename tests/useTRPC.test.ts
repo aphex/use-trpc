@@ -411,14 +411,14 @@ describe('useSubscription', () => {
     await expect(watchFor(state, 'started')).resolves.not.toThrowError()
 
     unsubscribe()
-    // TODO: Same completed vs stooped bug here
+    // TODO: Same completed vs stopped bug here
     await expect(watchFor(state, 'completed')).resolves.not.toThrowError()
 
     // change args
     name.value = 'test2'
     // wait a tick for subscription to be unsubscribed
     await nextTick()
-    // TODO: Same completed vs stooped bug here
+    // TODO: Same completed vs stopped bug here
     // At this point the subscription should stay stopped
     expect(state.value).toBe('completed')
     // give it a bit just to be sure it doesn't try to start again
