@@ -24,7 +24,7 @@ export type inferProcedureValues<
 > = P extends `${infer K}.${infer Rest}`
   ? K extends keyof T
     ? T[K] extends AnyRouter
-      ? Rest extends inferProcedureNames<T, ProcedureType>
+      ? Rest extends inferProcedureNames<T[K], ProcedureType>
         ? inferProcedureValues<T[K], Rest>
         : never
       : never
