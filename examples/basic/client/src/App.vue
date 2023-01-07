@@ -10,7 +10,7 @@
   // as our demo is all on local host we need to force a delay to see the loading indicator
   import { refThrottled } from '@vueuse/core'
 
-  const { useQuery, useSubscription, isExecuting, executions, connected, client } = useTRPC<Router>({
+  const { useQuery, useSubscription, isExecuting, executions, connected } = useTRPC<Router>({
     url: `/trpc`, // note the vite.config.ts proxy helping us with cors issues here
     wsUrl: `ws://localhost:8080/`,
   })

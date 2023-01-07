@@ -22,10 +22,10 @@ import {
   watch,
 } from 'vue-demi'
 
-import type { TRPCSubscriptionObserver } from '@trpc/client/dist/internals/TRPCClient'
 import type { AnyRouter, inferProcedureInput, inferProcedureOutput, ProcedureType } from '@trpc/server'
 import type { Observable, Unsubscribable } from '@trpc/server/observable'
 import type { Fn, inferProcedureNames, inferProcedureValues, MaybeAsyncFn } from './types'
+import type { TRPCSubscriptionObserver } from '@trpc/client/dist/internals/TRPCUntypedClient'
 
 type UseProcedureConfig<D> = {
   immediate?: boolean

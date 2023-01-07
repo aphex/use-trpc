@@ -1,5 +1,6 @@
 src
 tests
 examples
+pnpm-workspace.yaml
 build.config.ts
 tsconfig.json
