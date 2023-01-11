@@ -22,7 +22,7 @@ import {
   watch,
 } from 'vue-demi'
 
-import type { AnyRouter, inferProcedureInput, inferProcedureOutput, ProcedureType } from '@trpc/server'
+import type { AnyRouter, inferProcedureInput, inferProcedureOutput, MaybePromise, ProcedureType } from '@trpc/server'
 import type { Observable, Unsubscribable } from '@trpc/server/observable'
 import type { Fn, inferProcedureNames, inferProcedureValues, MaybeAsyncFn } from './types'
 import type { TRPCSubscriptionObserver } from '@trpc/client/dist/internals/TRPCUntypedClient'
@@ -33,7 +33,7 @@ type UseProcedureConfig<D> = {
   initialData?: D
   msg?: string
 }
-type ProcedureArgs<T> = T | (() => T | Promise<T>)
+type ProcedureArgs<T> = T | (() => MaybePromise<T | undefined>)
 
 type UseSubscriptionConfig<D, E> = {
   onData?: (data: D) => void
@@ -250,8 +250,11 @@ export const useTRPC = <Router extends AnyRouter>(config: {
       // multiple times within the same tick
       const _execute = async () => {
         try {
-          abortController.value = new AbortController()
           const _args = areArgsFn ? await (args as MaybeAsyncFn)() : args
+          // Allow args fn to opt out of running the tRPC procedure by returning an undefined
+          if (areArgsFn && _args === undefined) return
+
+          abortController.value = new AbortController()
           _data.value = (await fn[method](_args, { signal: abortController.value.signal })) as UnwrapRef<O>
         } catch (e) {
           // if (!config.silent) console.error(e)

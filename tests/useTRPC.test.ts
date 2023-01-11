@@ -56,7 +56,7 @@ export type Router = typeof router
 /* -------------------------------------------------------------------------- */
 /*                              Helper Utilities                              */
 /* -------------------------------------------------------------------------- */
-const create = (args?: Parameters<typeof useTRPC>[0]) => {
+const create = (args?: Parameters<typeof useTRPC<Router>>[0]) => {
   return useTRPC<Router>({
     url: `http://localhost:${PORT}`,
     wsUrl: `ws://localhost:${PORT}`,
@@ -297,6 +297,17 @@ describe('useQuery/useMutation', () => {
       name.value = 'Bob'
       await nextTick()
       expect(executions.value.length).toBe(1)
+    })
+
+    it.only('should skip the query if the args fn return undefined', async () => {
+      const name = ref('Steve')
+      const { useQuery } = create()
+      const { data, executing } = useQuery('getUser', () => undefined, { reactive: true })
+
+      name.value = 'Bob'
+      await nextTick()
+      if (executing.value) await untilFalsy(executing)
+      expect(data.value).toBeUndefined()
     })
   })
 })
