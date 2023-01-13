@@ -293,6 +293,8 @@ export const useTRPC = <Router extends AnyRouter>(config: {
       let immediatePromise: Promise<boolean> | undefined
       const result = {
         data,
+        reset: () => (_data.value = initialData),
+        clear: () => (_data.value = undefined),
         error,
         execute,
         executing,
