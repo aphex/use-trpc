@@ -6,5 +6,4 @@ export default defineBuildConfig({
     emitCJS: true,
   },
   entries: ['src/index'],
-  // externals: ['aws-lambda'],
 })

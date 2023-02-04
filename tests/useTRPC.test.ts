@@ -110,14 +110,14 @@ beforeAll(() => {
 describe('useQuery/useMutation', () => {
   it('data should be set to initialData', async () => {
     const { useQuery } = create()
-    const { data } = useQuery('getUser', { name: 'Bob' }, { initialData: 'Hello' })
+    const { data } = useQuery('getUser', { args: { name: 'Bob' }, initialData: 'Hello' })
 
     await nextTick()
     expect(data.value).toBe('Hello')
   })
   it('should update data on next tick when set to immediate execution', async () => {
     const { useQuery } = create()
-    const { data, immediatePromise } = useQuery('getUser', { name: 'Bob' }, { immediate: true })
+    const { data, immediatePromise } = useQuery('getUser', { args: { name: 'Bob' }, immediate: true })
 
     await immediatePromise
     expect(data.value).toBe('Hello, Bob!')
@@ -125,7 +125,7 @@ describe('useQuery/useMutation', () => {
 
   it('should update data after manual execution', async () => {
     const { useQuery } = create()
-    const { data, execute } = useQuery('getUser', { name: 'Bob' })
+    const { data, execute } = useQuery('getUser', { args: { name: 'Bob' } })
 
     await execute()
     expect(data.value).toBe('Hello, Bob!')
@@ -138,7 +138,7 @@ describe('useQuery/useMutation', () => {
       })
 
       const { useQuery } = create({ headers })
-      const { data, executing } = useQuery('getUser', { name: 'Bob' })
+      const { data, executing } = useQuery('getUser', { args: { name: 'Bob' } })
 
       headers.Authorization = 'jwt-token'
       await nextTick()
@@ -155,7 +155,7 @@ describe('useQuery/useMutation', () => {
           Authorization: auth.value,
         }),
       })
-      const { executing, data } = useQuery('getUser', { name: 'Bob' }, { reactive: { headers: true } })
+      const { executing, data } = useQuery('getUser', { args: { name: 'Bob' }, reactive: { headers: true } })
 
       auth.value = 'jwt-token'
       await nextTick()
@@ -170,7 +170,7 @@ describe('useQuery/useMutation', () => {
       })
 
       const { useQuery } = create({ headers: () => headers })
-      const { executing } = useQuery('getUser', { name: 'Bob' })
+      const { executing } = useQuery('getUser', { args: { name: 'Bob' } })
 
       headers.Authorization = 'jwt-token'
       await nextTick()
@@ -185,7 +185,7 @@ describe('useQuery/useMutation', () => {
           Authorization: auth.value,
         }),
       })
-      const { executing } = useQuery('getUser', { name: 'Bob' })
+      const { executing } = useQuery('getUser', { args: { name: 'Bob' } })
 
       auth.value = 'jwt-token'
       await nextTick()
@@ -199,7 +199,7 @@ describe('useQuery/useMutation', () => {
       const args = reactive({
         name: 'Steve',
       })
-      const { data, executing } = useQuery('getUser', args)
+      const { data, executing } = useQuery('getUser', { args })
 
       args.name = 'Bob'
       await untilFalsy(executing)
@@ -211,7 +211,7 @@ describe('useQuery/useMutation', () => {
         name: 'Steve',
       })
       const { useQuery } = create()
-      const { execute, data } = useQuery('getUser', args, { reactive: { args: false } })
+      const { execute, data } = useQuery('getUser', { args, reactive: { args: false } })
 
       args.name = 'Bob'
       await execute()
@@ -221,7 +221,7 @@ describe('useQuery/useMutation', () => {
     it('should pickup new function arg values when manually executed', async () => {
       const name = ref('Steve')
       const { useQuery } = create()
-      const { execute, executing, data } = useQuery('getUser', () => ({ name: name.value }))
+      const { execute, executing, data } = useQuery('getUser', { args: () => ({ name: name.value }) })
 
       name.value = 'Bob'
       execute()
@@ -238,7 +238,7 @@ describe('useQuery/useMutation', () => {
       })
 
       const { useQuery, executions } = create({ headers })
-      useQuery('getUser', args)
+      useQuery('getUser', { args })
 
       headers.Authorization = 'jwt-token'
       args.name = 'Bob'
@@ -248,7 +248,7 @@ describe('useQuery/useMutation', () => {
 
     it('should only execute once if execute is called multiple times', async () => {
       const { useQuery, executions } = create()
-      const { execute } = useQuery('getUser', { name: 'Bob' })
+      const { execute } = useQuery('getUser', { args: { name: 'Bob' } })
 
       for (let i = 0; i < 10; i++) execute()
       await nextTick()
@@ -260,7 +260,7 @@ describe('useQuery/useMutation', () => {
         name: 'Steve',
       })
       const { useQuery, executions } = create()
-      useQuery('getUser', args, { reactive: false })
+      useQuery('getUser', { args, reactive: false })
 
       args.name = 'Bob'
       await nextTick()
@@ -272,7 +272,7 @@ describe('useQuery/useMutation', () => {
         name: 'Steve',
       })
       const { useQuery, executions } = create()
-      useQuery('getUser', () => args)
+      useQuery('getUser', { args: () => args })
 
       args.name = 'Bob'
       await nextTick()
@@ -282,7 +282,7 @@ describe('useQuery/useMutation', () => {
     it('should not execute for ref changes in a function', async () => {
       const name = ref('Steve')
       const { useQuery, executions } = create()
-      useQuery('getUser', () => ({ name: name.value }))
+      useQuery('getUser', { args: () => ({ name: name.value }) })
 
       name.value = 'Bob'
       await nextTick()
@@ -292,17 +292,17 @@ describe('useQuery/useMutation', () => {
     it('should execute for ref changes in a function when forced', async () => {
       const name = ref('Steve')
       const { useQuery, executions } = create()
-      useQuery('getUser', () => ({ name: name.value }), { reactive: true })
+      useQuery('getUser', { args: () => ({ name: name.value }), reactive: true })
 
       name.value = 'Bob'
       await nextTick()
       expect(executions.value.length).toBe(1)
     })
 
-    it.only('should skip the query if the args fn return undefined', async () => {
+    it('should skip the query if the args fn return undefined', async () => {
       const name = ref('Steve')
       const { useQuery } = create()
-      const { data, executing } = useQuery('getUser', () => undefined, { reactive: true })
+      const { data, executing } = useQuery('getUser', { args: () => undefined, reactive: true })
 
       name.value = 'Bob'
       await nextTick()
@@ -315,7 +315,7 @@ describe('useQuery/useMutation', () => {
 describe('useSubscription', () => {
   it('should update subscription active to true when created', async () => {
     const { useSubscription } = create()
-    const { state, unsubscribe } = useSubscription('latest', { name: 'test' })
+    const { state, unsubscribe } = useSubscription('latest', { args: { name: 'test' } })
 
     await expect(watchFor(state, 'started')).resolves.not.toThrowError()
     unsubscribe()
@@ -323,7 +323,7 @@ describe('useSubscription', () => {
 
   it('should not start the subscription when immediate is false', async () => {
     const { useSubscription } = create()
-    const { state, unsubscribe } = useSubscription('latest', { name: 'test' }, { immediate: false })
+    const { state, unsubscribe } = useSubscription('latest', { args: { name: 'test' }, immediate: false })
 
     // wait a bit incase it is trying to connect
     await sleep(250)
@@ -333,7 +333,7 @@ describe('useSubscription', () => {
 
   it('should update subscription state to stopped when unsubscribed', async () => {
     const { useSubscription } = create()
-    const { state, unsubscribe } = useSubscription('latest', { name: 'test' })
+    const { state, unsubscribe } = useSubscription('latest', { args: { name: 'test' } })
 
     await expect(watchFor(state, 'started')).resolves.not.toThrowError()
     unsubscribe()
@@ -346,8 +346,8 @@ describe('useSubscription', () => {
 
   it('should update the subscription data on manual execute', async () => {
     const { useSubscription, useMutation } = create()
-    const { execute } = useMutation('push', 'hello')
-    const { data, unsubscribe, state } = useSubscription('latest', { name: 'test' })
+    const { execute } = useMutation('push', { args: 'hello' })
+    const { data, unsubscribe, state } = useSubscription('latest', { args: { name: 'test' } })
 
     await expect(watchFor(state, 'started')).resolves.not.toThrowError()
     execute()
@@ -357,9 +357,9 @@ describe('useSubscription', () => {
 
   it('should resubscribe to the subscription when reactive args change', async () => {
     const { useSubscription, useMutation } = create()
-    const { execute } = useMutation('push', 'hello')
+    const { execute } = useMutation('push', { args: 'hello' })
     const name = ref('test')
-    const { data, unsubscribe, state } = useSubscription('latest', reactive({ name }))
+    const { data, unsubscribe, state } = useSubscription('latest', { args: reactive({ name }) })
 
     // Wait for the subscription to be started
     await expect(watchFor(state, 'started')).resolves.not.toThrowError()
@@ -387,8 +387,8 @@ describe('useSubscription', () => {
   it('should not resubscribe to the subscription when reactive args change while paused', async () => {
     const { useSubscription, useMutation } = create()
     const name = ref('test')
-    const { execute } = useMutation('push', 'hello')
-    const { data, unsubscribe, state, pause } = useSubscription('latest', reactive({ name }))
+    const { execute } = useMutation('push', { args: 'hello' })
+    const { data, unsubscribe, state, pause } = useSubscription('latest', { args: reactive({ name }) })
 
     // Wait for the subscription to be started
     await expect(watchFor(state, 'started')).resolves.not.toThrowError()
@@ -416,7 +416,7 @@ describe('useSubscription', () => {
   it('should not resubscribe to the subscription when reactive args change if already unsubscribed', async () => {
     const { useSubscription } = create()
     const name = ref('test')
-    const { unsubscribe, state } = useSubscription('latest', reactive({ name }))
+    const { unsubscribe, state } = useSubscription('latest', { args: reactive({ name }) })
 
     // Wait for the subscription to be started
     await expect(watchFor(state, 'started')).resolves.not.toThrowError()

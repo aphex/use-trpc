@@ -27,15 +27,19 @@ import type { Observable, Unsubscribable } from '@trpc/server/observable'
 import type { Fn, inferProcedureNames, inferProcedureValues, MaybeAsyncFn } from './types'
 import type { TRPCSubscriptionObserver } from '@trpc/client/dist/internals/TRPCUntypedClient'
 
-type UseProcedureConfig<D> = {
+type ProcedureArgs<T> = T | (() => MaybePromise<T | undefined>)
+
+type UseProcedureConfig<A extends ProcedureArgs<any>, D> = {
+  args?: A
   immediate?: boolean
   reactive?: boolean | { headers?: boolean; args?: boolean }
   initialData?: D
   msg?: string
 }
-type ProcedureArgs<T> = T | (() => MaybePromise<T | undefined>)
 
-type UseSubscriptionConfig<D, E> = {
+type SubscriptionArgs<T> = T | (() => T)
+type UseSubscriptionConfig<A extends SubscriptionArgs<any>, D, E> = {
+  args: A
   onData?: (data: D) => void
   onError?: (data: E) => void
   onComplete?: () => void
@@ -46,7 +50,6 @@ type UseSubscriptionConfig<D, E> = {
   reactive?: boolean
   immediate?: boolean
 }
-type SubscriptionArgs<T> = T | (() => T)
 type SubscriptionState = 'started' | 'stopped' | 'completed' | 'created'
 
 /**
@@ -58,7 +61,7 @@ type SubscriptionState = 'started' | 'stopped' | 'completed' | 'created'
  * @param config.logger Boolean to enable the default logger, or a logger config object
  * @param config.transformer Custom data transformer to serialize response data
  * @param config.client Full tRPC client config when not using url/wsUrl simple parameters
- * @param config.isWebsocketConnected When using custom client config this ref can be used to indicate if the websocket is connected. It is used just as a readonly passthrough for consistency
+ * @param config.isWebSocketConnected When using custom client config this ref can be used to indicate if the websocket is connected. It is used just as a readonly passthrough for consistency
  * @param config.silent Suppress any use-tRPC warnings or errors
  */
 export const useTRPC = <Router extends AnyRouter>(config: {
@@ -68,17 +71,17 @@ export const useTRPC = <Router extends AnyRouter>(config: {
   logger?: boolean | Parameters<typeof loggerLink>[0]
   transformer?: Parameters<typeof createTRPCProxyClient>[0]['transformer']
   client?: CreateTRPCClientOptions<Router>
-  isWebsocketConnected?: Ref<boolean>
+  isWebSocketConnected?: Ref<boolean>
   silent?: boolean
 }) => {
   // Used to track the websocket state. This is used to resubscribe to subscriptions when the websocket reconnects.
-  const { isWebsocketConnected: _isWebsocketConnected, headers } = config
+  const { isWebSocketConnected: _isWebSocketConnected, headers } = config
 
   // If the user is using a custom client config they need to track the websocket state manually
   // we provide a ref that can be used to indicate if the websocket is connected
-  const isWebsocketConnected =
-    !config.wsUrl && _isWebsocketConnected ? computed(() => _isWebsocketConnected.value) : ref(false)
-  const connected = readonly(isWebsocketConnected)
+  const isWebSocketConnected =
+    !config.wsUrl && _isWebSocketConnected ? computed(() => _isWebSocketConnected.value) : ref(false)
+  const connected = readonly(isWebSocketConnected)
 
   const wsLinkConfig = config.wsUrl
     ? wsLink({
@@ -87,10 +90,10 @@ export const useTRPC = <Router extends AnyRouter>(config: {
           onClose() {
             // We cast these as typescript is not able to infer these will be regular refs
             // from just the `wsUrl` property
-            ;(isWebsocketConnected as Ref<boolean>).value = false
+            ;(isWebSocketConnected as Ref<boolean>).value = false
           },
           onOpen() {
-            ;(isWebsocketConnected as Ref<boolean>).value = true
+            ;(isWebSocketConnected as Ref<boolean>).value = true
           },
         }),
       })
@@ -174,12 +177,10 @@ export const useTRPC = <Router extends AnyRouter>(config: {
       >
     >(
       procedure: P,
-      ...[args, procedureConfig]: undefined extends O
-        ? [args?: ProcedureArgs<I>, procedureConfig?: UseProcedureConfig<O>]
-        : [args: ProcedureArgs<I>, procedureConfig?: UseProcedureConfig<O>]
+      procedureConfig?: UseProcedureConfig<ProcedureArgs<I>, O>
     ) => {
       procedureConfig = procedureConfig || {}
-      const { immediate, reactive, initialData, msg } = procedureConfig
+      const { args, immediate, reactive, initialData, msg } = procedureConfig
 
       // Is this a Query or Mutation?
       const method = procedureType === 'query' ? 'query' : 'mutate'
@@ -356,13 +357,10 @@ export const useTRPC = <Router extends AnyRouter>(config: {
     R extends [any, any] = O extends Observable<infer O, infer E> ? [O, E] : [never, never]
   >(
     topic: P,
-    ...[args, subscriptionConfig]: undefined extends I
-      ? [args?: SubscriptionArgs<I>, subscriptionConfig?: UseSubscriptionConfig<R[0], R[1]>]
-      : [args: SubscriptionArgs<I>, subscriptionConfig?: UseSubscriptionConfig<R[0], R[1]>]
+    subscriptionConfig?: UseSubscriptionConfig<SubscriptionArgs<I>, R[0], R[1]>
   ) => {
-    subscriptionConfig = subscriptionConfig || {}
-    const { initialData, initialError, reactive } = subscriptionConfig
-    let { onData, onError, onComplete, onStarted, onStopped, immediate } = subscriptionConfig
+    const { initialData, initialError, reactive } = subscriptionConfig || {}
+    let { args, onData, onError, onComplete, onStarted, onStopped, immediate } = subscriptionConfig || {}
 
     // Lets default to immediately subscribing to the topic
     if (immediate === undefined) immediate = true

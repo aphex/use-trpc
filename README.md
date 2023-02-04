@@ -41,7 +41,7 @@ By default `reactive` objects will automatically be tracked and trigger a new ex
   })
 
   const id = ref(0)
-  const { data } = useQuery('getUser', reactive({ id }))
+  const { data } = useQuery('getUser', { args: reactive({ id }) })
 </script>
 
 <template>
@@ -71,7 +71,7 @@ By default `reactive` objects will automatically be tracked and trigger a new ex
 ## Reactive Arguments
 ```ts
   const id = ref(0)
-  const { data } = useQuery('getUser', reactive({ id }))
+  const { data } = useQuery('getUser', { args: reactive({ id }) })
 
   // Will trigger an execution of getUser with the id of 10
   id.value = 10
@@ -83,7 +83,7 @@ into it you can set `reactive` to `true` and the getter function will be watched
 
 ```ts
   const id = ref(0)
-  const { data } = useQuery('getUser', () => reactive({ id }))
+  const { data } = useQuery('getUser', { args: () => reactive({ id }) })
 
   // Will not trigger an execution of getUser with the id of 10
   id.value = 10
@@ -131,10 +131,10 @@ into it you can set `reactive` to `true` and the getter function will be watched
   const { data, execute, executing, immediatePromise, pause, paused, unpause } = useQuery(
     // path to the procedure
     'getUser',
-    // arguments for the procedure could also be `{id}`, `() => ({id})`, or `() => reactive({id})`
-    reactive({ id }),
     // useQuery configuration
     {
+      // arguments for the procedure could also be `{id}`, `() => ({id})`, or `() => reactive({id})`
+      args: reactive({ id }),
       immediate: true,
       initialData: { name: 'Bob' },
       msg: 'Loading User',
@@ -161,10 +161,10 @@ into it you can set `reactive` to `true` and the getter function will be watched
   } = useSubscription(
     // path to the topic to subscribe to
     'uptime', 
-    // input arguments for this subscription (can also be reactive, ref, or a getter function)
-    'auth-token', 
     // useSubscription configuration
     {
+      // input arguments for this subscription (can also be reactive, ref, or a getter function)
+      args: 'auth-token', 
       initialData: { start: 0, uptime: 0 },
       immediate: true,
       onData(data) {
@@ -198,7 +198,7 @@ into it you can set `reactive` to `true` and the getter function will be watched
 | logger               | Boolean or logger options to create a tRPC logger                                      |
 | transformer          | Data transformer to serialize response data                                            |
 | client               | Full tRPC client config                                                                |
-| isWebsocketConnected | _(Ref)_ Used to indicate websocket connection status when using a custom client config |
+| isWebSocketConnected | _(Ref)_ Used to indicate websocket connection status when using a custom client config |
 | silent               | _(boolean)_ Suppress any warning or error logs                                         |
 
 > **Warning**
@@ -209,25 +209,27 @@ into it you can set `reactive` to `true` and the getter function will be watched
 
 ## useQuery/useMutation
 
-| Property    | Description                                                              |
-| ----------- | ------------------------------------------------------------------------ |
-| immediate   | _(boolean)_ execute the procedure immediately                            |
-| initialData | Seed data for the reactive data property                                 |
-| reactive    | _(boolean or {headers: boolean, args: boolean})_ Force reactivity on/off |
-| msg         | (string) Message to edd to execution array when this procedure runs      |
+| Property    | Description                                                                   |
+| ----------- | ----------------------------------------------------------------------------- |
+| args        | _(any or () => any)_ arguments to pass along as query params or mutation body |
+| immediate   | _(boolean)_ execute the procedure immediately                                 |
+| initialData | Seed data for the reactive data property                                      |
+| reactive    | _(boolean or {headers: boolean, args: boolean})_ Force reactivity on/off      |
+| msg         | _(string)_ Message to edd to execution array when this procedure runs         |
 
 ## useSubscription
 
-| Property    | Description                                                              |
-| ----------- | ------------------------------------------------------------------------ |
-| onData      | Callback when server emits a message for this topic                      |
-| onError     | Callback when the server emits an error for this topic                   |
-| onStarted   | Callback when a subscription is started                                  |
-| onComplete  | Callback when the server emits subscription completed                    |
-| onStopped   | Callback when a subscription is stopped                                  |
-| initialData | Seed data for the reactive data property                                 |
-| immediate   | _(boolean)_ subscribe to the topic immediately                           |
-| reactive    | _(boolean or {headers: boolean, args: boolean})_ Force reactivity on/off |
+| Property    | Description                                                                 |
+| ----------- | --------------------------------------------------------------------------- |
+| args        | _(any or () => any)_ arguments to pass along as params for the subscription |
+| onData      | Callback when server emits a message for this topic                         |
+| onError     | Callback when the server emits an error for this topic                      |
+| onStarted   | Callback when a subscription is started                                     |
+| onComplete  | Callback when the server emits subscription completed                       |
+| onStopped   | Callback when a subscription is stopped                                     |
+| initialData | Seed data for the reactive data property                                    |
+| immediate   | _(boolean)_ subscribe to the topic immediately                              |
+| reactive    | _(boolean or {headers: boolean, args: boolean})_ Force reactivity on/off    |
 
 
 # 🎁 Return Details

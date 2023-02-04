@@ -20,14 +20,19 @@
   const messages = refThrottled(executions, 750)
 
   const id = ref(0)
-  const { data, abortController } = useQuery('getUser', reactive({ id }), { msg: 'Loading User', immediate: true })
+  const { data, abortController } = useQuery('getUser', {
+    args: reactive({ id }),
+    msg: 'Loading User',
+    immediate: true,
+  })
 
   const {
     data: uptimeData,
     subscribe,
     unsubscribe,
     subscribed,
-  } = useSubscription('uptime', () => id.value, {
+  } = useSubscription('uptime', {
+    args: () => id.value,
     initialData: { start: 0, uptime: 0, id: id.value },
     // Force reactive tracking of the args function
     reactive: true,
